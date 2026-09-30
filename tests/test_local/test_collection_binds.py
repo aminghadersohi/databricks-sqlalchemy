@@ -56,3 +56,17 @@ def test_binary_binds_as_hex_with_unhex():
     sql = compile_insert(sa.Column("b", sa.LargeBinary))
     assert "unhex(:`b`)" in sql
     assert processed(sa.LargeBinary(), b"\x00\xff") == "00ff"
+
+
+def test_element_bind_processors_are_applied():
+    import uuid
+    from datetime import time
+
+    u = uuid.UUID(int=1)
+    assert processed(DatabricksArray(sa.Uuid), [u, None]) == f'["{u}",null]'
+    assert processed(DatabricksArray(sa.Time), [time(1, 2, 3)]) == '["01:02:03"]'
+    assert processed(DatabricksMap(sa.Uuid, sa.Integer), {u: 1}) == f'{{"{u}":1}}'
+    # exact numeric serialization is unchanged (Numeric has no bind processor here)
+    assert processed(DatabricksArray(sa.Numeric(38, 18)), [Decimal("1E-18")]) == (
+        "[0.000000000000000001]"
+    )

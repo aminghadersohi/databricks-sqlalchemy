@@ -426,7 +426,7 @@ class DatabricksArray(UserDefinedType):
         self.item_type = item_type() if isinstance(item_type, type) else item_type
 
     def bind_processor(self, dialect):
-        return _collection_bind_processor(self)
+        return _collection_bind_processor(self, dialect)
 
     def bind_expression(self, bindvalue):
         return _collection_bind_expression(self, bindvalue)
@@ -454,7 +454,7 @@ class DatabricksMap(UserDefinedType):
         self.value_type = value_type() if isinstance(value_type, type) else value_type
 
     def bind_processor(self, dialect):
-        return _collection_bind_processor(self)
+        return _collection_bind_processor(self, dialect)
 
     def bind_expression(self, bindvalue):
         return _collection_bind_expression(self, bindvalue)
@@ -576,23 +576,42 @@ def _json_key(key):
     return _json_scalar(key)
 
 
-def _collection_json(value, type_):
+def _leaf_bind_processor(type_, dialect):
+    """The element type's own (dialect-adapted) bind processor, if any.
+
+    Applied before JSON serialization so element types that convert their
+    values (Uuid, Time, custom TypeDecorators, ...) keep working inside a
+    collection, as they did before values were sent as JSON.
+    """
+    return type_.dialect_impl(dialect).bind_processor(dialect)
+
+
+def _collection_json(value, type_, dialect):
     if value is None:
         return "null"
     if isinstance(type_, DatabricksArray):
-        return "[" + ",".join(_collection_json(v, type_.item_type) for v in value) + "]"
+        return (
+            "["
+            + ",".join(_collection_json(v, type_.item_type, dialect) for v in value)
+            + "]"
+        )
     if isinstance(type_, DatabricksMap):
+        key_processor = _leaf_bind_processor(type_.key_type, dialect)
         return (
             "{"
             + ",".join(
-                json.dumps(_json_key(k), ensure_ascii=False)
+                json.dumps(
+                    _json_key(key_processor(k) if key_processor else k),
+                    ensure_ascii=False,
+                )
                 + ":"
-                + _collection_json(v, type_.value_type)
+                + _collection_json(v, type_.value_type, dialect)
                 for k, v in dict(value).items()
             )
             + "}"
         )
-    return _json_scalar(value)
+    processor = _leaf_bind_processor(type_, dialect)
+    return _json_scalar(processor(value) if processor else value)
 
 
 def _json_schema(type_):
@@ -611,9 +630,9 @@ def _has_map(type_):
     return isinstance(type_, DatabricksArray) and _has_map(type_.item_type)
 
 
-def _collection_bind_processor(type_):
+def _collection_bind_processor(type_, dialect):
     def process(value):
-        return None if value is None else _collection_json(value, type_)
+        return None if value is None else _collection_json(value, type_, dialect)
 
     return process
 
