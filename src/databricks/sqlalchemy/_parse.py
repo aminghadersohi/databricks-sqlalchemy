@@ -336,10 +336,11 @@ def parse_numeric_type_precision_and_scale(type_name_str):
     If type_name_str is "DECIMAL(18,5) returns sqlalchemy.types.Numeric(18,5)
     """
 
-    pattern = re.compile(r"DECIMAL\((\d+,\d+)\)")
+    pattern = re.compile(r"DECIMAL\(\s*(\d+)\s*,\s*(\d+)\s*\)", re.IGNORECASE)
     match = re.search(pattern, type_name_str)
-    precision_and_scale = match.group(1)
-    precision, scale = tuple(precision_and_scale.split(","))
+    if match is None:
+        return sqlalchemy.types.Numeric()
+    precision, scale = match.groups()
 
     return sqlalchemy.types.Numeric(int(precision), int(scale))
 

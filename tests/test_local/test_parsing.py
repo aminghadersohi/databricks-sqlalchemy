@@ -297,3 +297,18 @@ def test_parse_type_name_unknown_type_does_not_raise(type_name):
     with pytest.warns(SAWarning):
         column = parse_column_info_from_tgetcolumnsresponse(Row())
     assert column["name"] == "c" and isinstance(column["type"], NullType)
+
+
+@pytest.mark.parametrize(
+    "type_name, expected",
+    [
+        ("DECIMAL(10, 2)", "DECIMAL(10, 2)"),
+        ("decimal(10,2)", "DECIMAL(10, 2)"),
+        ("array<decimal(38, 18)>", "ARRAY<DECIMAL(38, 18)>"),
+        ("DECIMAL", "DECIMAL"),
+    ],
+)
+def test_parse_type_name_decimal_spelling(type_name, expected):
+    from databricks.sqlalchemy._parse import parse_type_name
+
+    assert parse_type_name(type_name).compile(dialect=dialect) == expected
